@@ -62,7 +62,7 @@ export interface SanctuaryMessage {
   participantAlias: string;
   content: string;
   timestamp: string;
-  type: "text" | "system" | "emoji-reaction";
+  type: "text" | "system" | "emoji-reaction" | "emergency";
 }
 
 // Expert-related types
@@ -304,7 +304,7 @@ export interface SanctuaryMessage {
   participantAlias: string;
   content: string;
   timestamp: string;
-  type: "text" | "system" | "emoji-reaction";
+  type: "text" | "system" | "emoji-reaction" | "emergency";
 }
 
 // API request types

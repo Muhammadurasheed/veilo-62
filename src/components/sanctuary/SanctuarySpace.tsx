@@ -20,6 +20,7 @@ import LiveAudioRoom from '@/components/sanctuary/LiveAudioRoom';
 import BreakoutRoomManager from '@/components/sanctuary/BreakoutRoomManager';
 import SessionRecorder from '@/components/sanctuary/SessionRecorder';
 import AIModerationDashboard from '@/components/sanctuary/AIModerationDashboard';
+import FlagshipSanctuaryChat from '@/components/sanctuary/FlagshipSanctuaryChat';
 
 // Create a mock function for generating a random avatar color
 const getAvatarColor = (alias: string): string => {
@@ -760,84 +761,22 @@ const SanctuarySpace: React.FC<SanctuarySpaceProps> = ({ isHost = false }) => {
 
             {/* Messages area */}
             <div className="flex-1 flex flex-col max-h-full">
-              {/* Messages container */}
-              <div className="flex-1 overflow-y-auto p-4 space-y-4">
-                {messages.map(message => (
-                  <div 
-                    key={message.id}
-                    className={`flex items-start gap-2 ${
-                      message.type === "system" ? "justify-center" : ""
-                    }`}
-                  >
-                    {message.type === "system" ? (
-                      <div className="bg-gray-100 dark:bg-gray-800 text-gray-500 dark:text-gray-400 text-xs py-1 px-3 rounded-full">
-                        {message.content}
-                      </div>
-                    ) : (
-                      <>
-                        <Avatar className={`h-8 w-8 ${getAvatarColor(message.participantAlias)}`}>
-                          <AvatarFallback>{getInitials(message.participantAlias)}</AvatarFallback>
-                        </Avatar>
-                        <div className="flex-1">
-                          <div className="flex items-baseline">
-                            <span className="font-medium text-sm">{message.participantAlias}</span>
-                            <span className="ml-2 text-xs text-gray-500">
-                              {new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </span>
-                          </div>
-                          <div className="mt-1 text-sm bg-gray-100 dark:bg-gray-800 p-2 rounded-md">
-                            {message.content}
-                          </div>
-                        </div>
-                      </>
-                    )}
-                  </div>
-                ))}
-                <div ref={messagesEndRef} />
-              </div>
-              
-              {/* Input area */}
               {participant ? (
-                <div className="border-t p-3">
-                  <div className="flex items-center gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className={audioEnabled ? "text-green-500" : "text-gray-500"}
-                      onClick={toggleAudio}
-                    >
-                      {audioEnabled ? <Mic size={20} /> : <MicOff size={20} />}
-                    </Button>
-                    <Input
-                      value={newMessage}
-                      onChange={e => setNewMessage(e.target.value)}
-                      placeholder="Type your message..."
-                      className="flex-1"
-                      onKeyDown={e => {
-                        if (e.key === 'Enter' && !e.shiftKey) {
-                          e.preventDefault();
-                          handleSendMessage();
-                        }
-                      }}
-                    />
-                    <Button 
-                      onClick={handleSendMessage}
-                      disabled={!newMessage.trim()}
-                      size="icon"
-                    >
-                      <Send size={18} />
+                <FlagshipSanctuaryChat 
+                  sessionId={sessionId!}
+                  participant={participant}
+                  className="h-full"
+                />
+              ) : (
+                <div className="flex-1 flex items-center justify-center text-center p-8">
+                  <div>
+                    <Shield className="w-16 h-16 mx-auto mb-4 text-gray-300" />
+                    <h3 className="text-lg font-medium text-gray-900 mb-2">Join the Sanctuary</h3>
+                    <p className="text-gray-500 mb-4">Connect with others in this safe, anonymous space</p>
+                    <Button onClick={() => setJoinDialogOpen(true)}>
+                      Join Now
                     </Button>
                   </div>
-                </div>
-              ) : (
-                <div className="border-t p-4 text-center">
-                  <p className="text-gray-500">Join the sanctuary to participate in the discussion</p>
-                  <Button 
-                    onClick={() => setJoinDialogOpen(true)}
-                    className="mt-2"
-                  >
-                    Join Now
-                  </Button>
                 </div>
               )}
             </div>

@@ -23,6 +23,9 @@ interface SocketEvents {
   emoji_reaction: (data: { participantId: string; participantAlias: string; emoji: string; timestamp: string }) => void;
   emergency_alert: (data: { alertType: string; message: string; fromParticipant: string; timestamp: string }) => void;
   
+  // Chat events
+  sanctuary_message: (data: { participantId: string; participantAlias: string; content: string; timestamp: string; type?: string }) => void;
+  
   // Personal events
   promoted_to_speaker: (data: { sessionId: string; promotedBy: string; timestamp: string }) => void;
   force_muted: (data: { sessionId: string; mutedBy: string; timestamp: string }) => void;

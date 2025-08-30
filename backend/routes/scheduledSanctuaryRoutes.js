@@ -39,7 +39,7 @@ router.post('/',
       // Validate scheduled time is in the future
       const scheduledTime = new Date(scheduledDateTime);
       if (scheduledTime <= new Date()) {
-        return res.error('Scheduled time must be in the future', 400);
+        return res.status(400).json({ success: false, error: 'Scheduled time must be in the future' });
       }
 
       // Create scheduled sanctuary
