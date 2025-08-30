@@ -28,7 +28,7 @@ router.post('/', authMiddleware, async (req, res) => {
     });
 
     if (!topic || topic.trim().length === 0) {
-      return res.error('Topic is required', 400);
+      return res.status(400).json({ success: false, error: 'Topic is required' });
     }
 
     // Generate unique session ID and channel name
@@ -138,12 +138,15 @@ router.post('/', authMiddleware, async (req, res) => {
       responseKeys: Object.keys(sessionResponse)
     });
 
-    res.success({
-      session: sessionResponse,
-      // Also provide direct access for compatibility
-      id: sessionResponse.id,
-      hostToken: sessionResponse.hostToken
-    }, 'Live sanctuary session created successfully');
+    res.status(200).json({
+      success: true,
+      data: {
+        session: sessionResponse,
+        id: sessionResponse.id,
+        hostToken: sessionResponse.hostToken
+      },
+      message: 'Live sanctuary session created successfully'
+    });
 
   } catch (error) {
     console.error('❌ Live sanctuary creation error:', error);
