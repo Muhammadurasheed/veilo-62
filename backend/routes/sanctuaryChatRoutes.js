@@ -1,114 +1,41 @@
 const express = require('express');
 const router = express.Router();
+const { authMiddleware, optionalAuthMiddleware } = require('../middleware/auth');
 const SanctuaryMessage = require('../models/SanctuaryMessage');
 const LiveSanctuarySession = require('../models/LiveSanctuarySession');
-const { authMiddleware } = require('../middleware/auth');
-const { body } = require('express-validator');
-const { validate } = require('../middleware/validation');
-
-// Send message to sanctuary
-router.post('/sessions/:sessionId/messages', 
-  authMiddleware,
-  validate([
-    body('content').isLength({ min: 1, max: 1000 }).trim(),
-    body('type').optional().isIn(['text', 'emoji-reaction', 'system']),
-    body('replyTo').optional().isString()
-  ]),
-  async (req, res) => {
-    try {
-      const { sessionId } = req.params;
-      const { content, type = 'text', replyTo } = req.body;
-
-      // Verify session exists and is active
-      const session = await LiveSanctuarySession.findOne({ 
-        id: sessionId, 
-        isActive: true 
-      });
-
-      if (!session) {
-        return res.error('Sanctuary session not found or inactive', 404);
-      }
-
-      // Check if user is participant
-      const isParticipant = session.participants.some(p => p.id === req.user.shadowId);
-      if (!isParticipant && session.hostId !== req.user.id) {
-        return res.error('You must be a participant to send messages', 403);
-      }
-
-      // Create message
-      const message = new SanctuaryMessage({
-        sessionId,
-        senderShadowId: req.user.shadowId,
-        senderAlias: req.user.alias,
-        senderAvatarIndex: req.user.avatarIndex,
-        content,
-        type,
-        replyTo,
-        metadata: {
-          ipAddress: req.ip,
-          userAgent: req.get('User-Agent')
-        }
-      });
-
-      await message.save();
-
-      // Emit message via socket (handled by socket server)
-      req.app.get('io')?.to(`sanctuary-${sessionId}`).emit('new_message', {
-        id: message.id,
-        senderShadowId: message.senderShadowId,
-        senderAlias: message.senderAlias,
-        senderAvatarIndex: message.senderAvatarIndex,
-        content: message.content,
-        type: message.type,
-        timestamp: message.timestamp,
-        replyTo: message.replyTo
-      });
-
-      return res.success({
-        message: {
-          id: message.id,
-          senderAlias: message.senderAlias,
-          senderAvatarIndex: message.senderAvatarIndex,
-          content: message.content,
-          type: message.type,
-          timestamp: message.timestamp,
-          replyTo: message.replyTo
-        }
-      }, 'Message sent successfully');
-
-    } catch (error) {
-      console.error('Send sanctuary message error:', error);
-      return res.error('Failed to send message', 500);
-    }
-  }
-);
+const cacheService = require('../services/cacheService');
+const { nanoid } = require('nanoid');
 
 // Get messages for a sanctuary session
-router.get('/sessions/:sessionId/messages', authMiddleware, async (req, res) => {
+router.get('/sessions/:sessionId/messages', optionalAuthMiddleware, async (req, res) => {
   try {
     const { sessionId } = req.params;
-    const { page = 1, limit = 50, before } = req.query;
+    const { limit = 50, page = 1, since } = req.query;
+    
+    console.log('📨 Fetching sanctuary messages:', { sessionId, limit, page, since });
 
-    // Verify session exists and user has access
+    // Check if session exists and is accessible
     const session = await LiveSanctuarySession.findOne({ id: sessionId });
     if (!session) {
       return res.error('Sanctuary session not found', 404);
     }
 
-    // Check if user is participant or host
-    const isParticipant = session.participants.some(p => p.id === req.user.shadowId);
-    if (!isParticipant && session.hostId !== req.user.id) {
-      return res.error('You must be a participant to view messages', 403);
+    // Check cache first
+    const cacheKey = `sanctuary_messages:${sessionId}:${page}:${limit}:${since || 'all'}`;
+    const cachedMessages = cacheService.get(cacheKey);
+    
+    if (cachedMessages) {
+      return res.success({
+        messages: cachedMessages.messages,
+        pagination: cachedMessages.pagination,
+        cached: true
+      }, 'Messages retrieved from cache');
     }
 
     // Build query
-    const query = { 
-      sessionId,
-      isDeleted: false
-    };
-
-    if (before) {
-      query.timestamp = { $lt: new Date(before) };
+    const query = { sessionId };
+    if (since) {
+      query.timestamp = { $gt: new Date(since) };
     }
 
     // Get messages with pagination
@@ -118,125 +45,326 @@ router.get('/sessions/:sessionId/messages', authMiddleware, async (req, res) => 
       .skip((parseInt(page) - 1) * parseInt(limit))
       .lean();
 
-    return res.success({
-      messages: messages.map(msg => ({
-        id: msg.id,
-        senderAlias: msg.senderAlias,
-        senderAvatarIndex: msg.senderAvatarIndex,
-        content: msg.content,
-        type: msg.type,
-        timestamp: msg.timestamp,
-        replyTo: msg.replyTo,
-        reactions: msg.reactions,
-        isEdited: msg.isEdited
-      })),
+    const total = await SanctuaryMessage.countDocuments(query);
+
+    const responseData = {
+      messages: messages.reverse(), // Show oldest first
       pagination: {
         page: parseInt(page),
         limit: parseInt(limit),
-        hasMore: messages.length === parseInt(limit)
+        total,
+        pages: Math.ceil(total / parseInt(limit)),
+        hasNext: parseInt(page) * parseInt(limit) < total,
+        hasPrev: parseInt(page) > 1
       }
-    }, 'Messages retrieved successfully');
+    };
+
+    // Cache for 30 seconds
+    cacheService.set(cacheKey, responseData, 30);
+
+    res.success(responseData, 'Messages retrieved successfully');
 
   } catch (error) {
-    console.error('Get sanctuary messages error:', error);
-    return res.error('Failed to retrieve messages', 500);
+    console.error('❌ Error fetching sanctuary messages:', error);
+    res.error('Failed to fetch messages: ' + error.message, 500);
   }
 });
 
-// Add reaction to message
-router.post('/messages/:messageId/reactions',
-  authMiddleware,
-  validate([
-    body('emoji').isLength({ min: 1, max: 10 }).trim()
-  ]),
-  async (req, res) => {
-    try {
-      const { messageId } = req.params;
-      const { emoji } = req.body;
+// Send a message to sanctuary session
+router.post('/sessions/:sessionId/messages', authMiddleware, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    const { content, type = 'text', replyTo, isAnonymous = false } = req.body;
+    
+    console.log('📤 Sending sanctuary message:', { 
+      sessionId, 
+      userId: req.user.id, 
+      type, 
+      contentLength: content?.length 
+    });
 
-      const message = await SanctuaryMessage.findOne({ id: messageId });
-      if (!message) {
-        return res.error('Message not found', 404);
-      }
+    if (!content || content.trim().length === 0) {
+      return res.error('Message content is required', 400);
+    }
 
-      // Verify user has access to the session
-      const session = await LiveSanctuarySession.findOne({ id: message.sessionId });
-      const isParticipant = session.participants.some(p => p.id === req.user.shadowId);
-      if (!isParticipant && session.hostId !== req.user.id) {
-        return res.error('You must be a participant to react to messages', 403);
-      }
+    if (content.length > 1000) {
+      return res.error('Message too long (max 1000 characters)', 400);
+    }
 
-      // Check if user already reacted with this emoji
-      const existingReaction = message.reactions.find(r => 
-        r.senderShadowId === req.user.shadowId && r.emoji === emoji
-      );
+    // Check if session exists and is active
+    const session = await LiveSanctuarySession.findOne({ 
+      id: sessionId, 
+      isActive: true,
+      status: 'active'
+    });
+    
+    if (!session) {
+      return res.error('Sanctuary session not found or inactive', 404);
+    }
 
-      if (existingReaction) {
-        // Remove reaction
-        message.reactions = message.reactions.filter(r => 
-          !(r.senderShadowId === req.user.shadowId && r.emoji === emoji)
-        );
-      } else {
-        // Add reaction
-        message.reactions.push({
-          emoji,
-          senderShadowId: req.user.shadowId,
-          senderAlias: req.user.alias
-        });
-      }
+    // Check if user is participant
+    const isParticipant = session.participants.some(p => p.id === req.user.id);
+    const isHost = session.hostId === req.user.id;
+    
+    if (!isParticipant && !isHost) {
+      return res.error('You must join the session to send messages', 403);
+    }
 
-      await message.save();
+    // Get participant info
+    const participant = session.participants.find(p => p.id === req.user.id) || {
+      id: req.user.id,
+      alias: req.user.alias || 'Anonymous',
+      avatarIndex: req.user.avatarIndex || 1
+    };
 
-      // Emit reaction update via socket
-      req.app.get('io')?.to(`sanctuary-${message.sessionId}`).emit('message_reaction', {
-        messageId: message.id,
-        emoji,
-        senderAlias: req.user.alias,
-        action: existingReaction ? 'remove' : 'add',
-        reactions: message.reactions
+    // Create message
+    const message = new SanctuaryMessage({
+      id: `msg-${nanoid(12)}`,
+      sessionId,
+      senderId: req.user.id,
+      senderAlias: isAnonymous ? 'Anonymous' : participant.alias,
+      senderAvatarIndex: participant.avatarIndex,
+      content: content.trim(),
+      type,
+      replyTo,
+      isAnonymous,
+      reactions: [],
+      isEdited: false,
+      timestamp: new Date()
+    });
+
+    await message.save();
+
+    // Invalidate cache
+    cacheService.invalidatePattern(`sanctuary_messages:${sessionId}:.*`);
+
+    // Get socket instance for real-time broadcast
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`sanctuary_${sessionId}`).emit('sanctuary_chat_message', {
+        id: message.id,
+        senderAlias: message.senderAlias,
+        senderAvatarIndex: message.senderAvatarIndex,
+        content: message.content,
+        type: message.type,
+        timestamp: message.timestamp,
+        replyTo: message.replyTo,
+        reactions: message.reactions,
+        isEdited: message.isEdited
       });
 
-      return res.success({
-        reactions: message.reactions
-      }, 'Reaction updated successfully');
-
-    } catch (error) {
-      console.error('Add message reaction error:', error);
-      return res.error('Failed to update reaction', 500);
+      console.log('✅ Real-time message broadcast sent');
     }
-  }
-);
 
-// Delete message (sender only)
-router.delete('/messages/:messageId', authMiddleware, async (req, res) => {
+    res.success({
+      message: {
+        id: message.id,
+        senderAlias: message.senderAlias,
+        senderAvatarIndex: message.senderAvatarIndex,
+        content: message.content,
+        type: message.type,
+        timestamp: message.timestamp,
+        replyTo: message.replyTo,
+        reactions: message.reactions,
+        isEdited: message.isEdited
+      }
+    }, 'Message sent successfully');
+
+  } catch (error) {
+    console.error('❌ Error sending sanctuary message:', error);
+    res.error('Failed to send message: ' + error.message, 500);
+  }
+});
+
+// Add reaction to a message
+router.post('/messages/:messageId/reactions', authMiddleware, async (req, res) => {
   try {
     const { messageId } = req.params;
+    const { emoji } = req.body;
+    
+    console.log('👍 Adding reaction to message:', { messageId, emoji, userId: req.user.id });
+
+    if (!emoji || emoji.length > 10) {
+      return res.error('Valid emoji is required', 400);
+    }
 
     const message = await SanctuaryMessage.findOne({ id: messageId });
     if (!message) {
       return res.error('Message not found', 404);
     }
 
-    // Only sender or session host can delete
+    // Check if user is participant in the session
     const session = await LiveSanctuarySession.findOne({ id: message.sessionId });
-    if (message.senderShadowId !== req.user.shadowId && session.hostId !== req.user.id) {
-      return res.error('You can only delete your own messages or messages as host', 403);
+    const isParticipant = session?.participants.some(p => p.id === req.user.id) || 
+                         session?.hostId === req.user.id;
+    
+    if (!isParticipant) {
+      return res.error('You must be a participant to react to messages', 403);
     }
 
-    message.isDeleted = true;
-    message.deletedAt = new Date();
+    // Check if user already reacted with this emoji
+    const existingReaction = message.reactions.find(r => 
+      r.senderId === req.user.id && r.emoji === emoji
+    );
+
+    if (existingReaction) {
+      // Remove existing reaction
+      message.reactions = message.reactions.filter(r => 
+        !(r.senderId === req.user.id && r.emoji === emoji)
+      );
+    } else {
+      // Add new reaction
+      message.reactions.push({
+        emoji,
+        senderId: req.user.id,
+        senderAlias: req.user.alias || 'Anonymous',
+        timestamp: new Date()
+      });
+    }
+
     await message.save();
 
-    // Emit message deletion via socket
-    req.app.get('io')?.to(`sanctuary-${message.sessionId}`).emit('message_deleted', {
-      messageId: message.id
-    });
+    // Invalidate cache
+    cacheService.invalidatePattern(`sanctuary_messages:${message.sessionId}:.*`);
 
-    return res.success(null, 'Message deleted successfully');
+    // Real-time broadcast
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`sanctuary_${message.sessionId}`).emit('sanctuary_message_reaction', {
+        messageId: message.id,
+        reactions: message.reactions,
+        action: existingReaction ? 'removed' : 'added',
+        emoji,
+        userId: req.user.id
+      });
+    }
+
+    res.success({
+      reactions: message.reactions
+    }, existingReaction ? 'Reaction removed' : 'Reaction added');
 
   } catch (error) {
-    console.error('Delete message error:', error);
-    return res.error('Failed to delete message', 500);
+    console.error('❌ Error adding reaction:', error);
+    res.error('Failed to add reaction: ' + error.message, 500);
+  }
+});
+
+// Delete a message (host/moderator/sender only)
+router.delete('/messages/:messageId', authMiddleware, async (req, res) => {
+  try {
+    const { messageId } = req.params;
+    
+    console.log('🗑️ Deleting sanctuary message:', { messageId, userId: req.user.id });
+
+    const message = await SanctuaryMessage.findOne({ id: messageId });
+    if (!message) {
+      return res.error('Message not found', 404);
+    }
+
+    // Check permissions
+    const session = await LiveSanctuarySession.findOne({ id: message.sessionId });
+    const isHost = session?.hostId === req.user.id;
+    const isModerator = session?.participants.find(p => p.id === req.user.id)?.isModerator;
+    const isSender = message.senderId === req.user.id;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isHost && !isModerator && !isSender && !isAdmin) {
+      return res.error('Not authorized to delete this message', 403);
+    }
+
+    await SanctuaryMessage.deleteOne({ id: messageId });
+
+    // Invalidate cache
+    cacheService.invalidatePattern(`sanctuary_messages:${message.sessionId}:.*`);
+
+    // Real-time broadcast
+    const io = req.app.get('io');
+    if (io) {
+      io.to(`sanctuary_${message.sessionId}`).emit('sanctuary_message_deleted', {
+        messageId: message.id,
+        deletedBy: req.user.id,
+        timestamp: new Date()
+      });
+    }
+
+    res.success({}, 'Message deleted successfully');
+
+  } catch (error) {
+    console.error('❌ Error deleting message:', error);
+    res.error('Failed to delete message: ' + error.message, 500);
+  }
+});
+
+// Get sanctuary chat statistics (host/moderator only)
+router.get('/sessions/:sessionId/stats', authMiddleware, async (req, res) => {
+  try {
+    const { sessionId } = req.params;
+    
+    console.log('📊 Fetching sanctuary chat stats:', { sessionId, userId: req.user.id });
+
+    const session = await LiveSanctuarySession.findOne({ id: sessionId });
+    if (!session) {
+      return res.error('Sanctuary session not found', 404);
+    }
+
+    // Check permissions
+    const isHost = session.hostId === req.user.id;
+    const isModerator = session.participants.find(p => p.id === req.user.id)?.isModerator;
+    const isAdmin = req.user.role === 'admin';
+
+    if (!isHost && !isModerator && !isAdmin) {
+      return res.error('Not authorized to view chat statistics', 403);
+    }
+
+    // Check cache first
+    const cacheKey = `sanctuary_chat_stats:${sessionId}`;
+    const cachedStats = cacheService.get(cacheKey);
+    
+    if (cachedStats) {
+      return res.success(cachedStats, 'Chat statistics retrieved from cache');
+    }
+
+    // Calculate statistics
+    const totalMessages = await SanctuaryMessage.countDocuments({ sessionId });
+    const textMessages = await SanctuaryMessage.countDocuments({ sessionId, type: 'text' });
+    const reactionMessages = await SanctuaryMessage.countDocuments({ sessionId, type: 'emoji-reaction' });
+    
+    const topSenders = await SanctuaryMessage.aggregate([
+      { $match: { sessionId } },
+      { $group: { _id: '$senderId', count: { $sum: 1 }, alias: { $first: '$senderAlias' } } },
+      { $sort: { count: -1 } },
+      { $limit: 10 }
+    ]);
+
+    const messagesByHour = await SanctuaryMessage.aggregate([
+      { $match: { sessionId } },
+      { 
+        $group: { 
+          _id: { $hour: '$timestamp' }, 
+          count: { $sum: 1 } 
+        } 
+      },
+      { $sort: { '_id': 1 } }
+    ]);
+
+    const stats = {
+      totalMessages,
+      textMessages,
+      reactionMessages,
+      topSenders,
+      messagesByHour,
+      averageMessagesPerParticipant: session.participants.length > 0 ? 
+        Math.round(totalMessages / session.participants.length) : 0
+    };
+
+    // Cache for 5 minutes
+    cacheService.set(cacheKey, stats, 300);
+
+    res.success(stats, 'Chat statistics retrieved successfully');
+
+  } catch (error) {
+    console.error('❌ Error fetching chat stats:', error);
+    res.error('Failed to fetch chat statistics: ' + error.message, 500);
   }
 });
 

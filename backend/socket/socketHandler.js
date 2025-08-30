@@ -1,6 +1,8 @@
 const { Server } = require('socket.io');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
+const { stateManager } = require('../services/sanctuaryStateManager');
+const SanctuaryMessage = require('../models/SanctuaryMessage');
 
 let io;
 
@@ -81,6 +83,9 @@ const initializeSocket = (server) => {
 
   io.on('connection', (socket) => {
     console.log(`🔌 User connected: ${socket.userId} (${socket.userAlias || 'Anonymous'}) - Role: ${socket.userRole || 'unknown'}`);
+    
+    // Store connection time for analytics
+    socket.connectedAt = Date.now();
 
     // Handle joining chat sessions
     socket.on('join_chat', async (data) => {
@@ -145,24 +150,52 @@ const initializeSocket = (server) => {
       });
     });
 
-    // Handle sanctuary spaces
+    // Enhanced sanctuary joining with state management
     socket.on('join_sanctuary', async (data) => {
       const { sanctuaryId, participant } = data;
+      
+      console.log('🏛️ Enhanced sanctuary join:', { sanctuaryId, userId: socket.userId, participant });
       
       socket.join(`sanctuary_${sanctuaryId}`);
       socket.currentSanctuary = sanctuaryId;
       
-      // Notify other participants
-      socket.to(`sanctuary_${sanctuaryId}`).emit('participant_joined', {
-        participant: {
-          id: socket.userId,
-          alias: participant.alias || socket.userAlias || 'Anonymous',
-          joinedAt: new Date().toISOString(),
-          isAnonymous: socket.isAnonymous || participant.isAnonymous
-        }
-      });
+      // Add participant to distributed state
+      const participantData = {
+        id: socket.userId,
+        alias: participant.alias || socket.userAlias || 'Anonymous',
+        socketId: socket.id,
+        isAnonymous: socket.isAnonymous || participant.isAnonymous,
+        isMuted: true, // Start muted by default
+        handRaised: false,
+        avatarIndex: socket.userAvatarIndex || Math.floor(Math.random() * 12) + 1,
+        role: participant.isHost ? 'host' : participant.isModerator ? 'moderator' : 'participant'
+      };
       
-      console.log(`User ${socket.userId} joined sanctuary ${sanctuaryId}`);
+      try {
+        const participants = await stateManager.addParticipant(sanctuaryId, participantData);
+        
+        // Notify all participants of the new joiner
+        socket.to(`sanctuary_${sanctuaryId}`).emit('participant_joined', {
+          participant: participantData,
+          totalParticipants: participants.length
+        });
+        
+        // Send current participant list to new joiner
+        socket.emit('participants_list', { participants });
+        
+        // Track join event
+        await stateManager.trackEvent(sanctuaryId, {
+          type: 'participant_joined',
+          participantId: socket.userId,
+          participantAlias: participantData.alias,
+          metadata: { isAnonymous: participantData.isAnonymous }
+        });
+        
+        console.log(`✅ User ${socket.userId} joined sanctuary ${sanctuaryId}, total: ${participants.length}`);
+      } catch (error) {
+        console.error('❌ Error adding participant to sanctuary:', error);
+        socket.emit('sanctuary_join_error', { error: error.message });
+      }
     });
 
     // Handle joining sanctuary as host for real-time inbox updates
@@ -261,22 +294,56 @@ const initializeSocket = (server) => {
       }
     });
 
-    socket.on('sanctuary_message', async (data) => {
-      const { sanctuaryId, content, type = 'text' } = data;
+    // Enhanced sanctuary messaging with persistence
+    socket.on('sanctuary_send_message', async (data) => {
+      const { sessionId, content, type = 'text', replyTo } = data;
       
-      const message = {
-        id: `sanctuary_msg_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-        participantId: socket.userId,
-        participantAlias: data.participantAlias || socket.userAlias || 'Anonymous',
-        content,
-        type,
-        timestamp: new Date().toISOString()
-      };
+      try {
+        const message = new SanctuaryMessage({
+          id: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          sessionId,
+          senderId: socket.userId,
+          senderAlias: socket.userAlias || 'Anonymous',
+          senderAvatarIndex: socket.userAvatarIndex || 1,
+          content,
+          type,
+          replyTo,
+          isAnonymous: socket.isAnonymous,
+          reactions: [],
+          isEdited: false,
+          timestamp: new Date()
+        });
 
-      // Broadcast to all participants in the sanctuary
-      io.to(`sanctuary_${sanctuaryId}`).emit('sanctuary_new_message', message);
-      
-      console.log(`Sanctuary message in ${sanctuaryId}:`, content);
+        await message.save();
+        
+        const messageData = {
+          id: message.id,
+          senderAlias: message.senderAlias,
+          senderAvatarIndex: message.senderAvatarIndex,
+          content: message.content,
+          type: message.type,
+          timestamp: message.timestamp,
+          replyTo: message.replyTo,
+          reactions: message.reactions,
+          isEdited: message.isEdited
+        };
+
+        // Broadcast to all participants in the sanctuary
+        io.to(`sanctuary_${sessionId}`).emit('sanctuary_chat_message', messageData);
+        
+        // Track message event
+        await stateManager.trackEvent(sessionId, {
+          type: 'message_sent',
+          participantId: socket.userId,
+          messageType: type,
+          messageLength: content.length
+        });
+        
+        console.log(`✅ Sanctuary message saved and broadcast: ${sessionId}`);
+      } catch (error) {
+        console.error('❌ Error handling sanctuary message:', error);
+        socket.emit('message_error', { error: error.message });
+      }
     });
 
     // Handle live audio room events
@@ -300,15 +367,27 @@ const initializeSocket = (server) => {
       console.log(`User ${socket.userId} joined audio room ${sessionId}`);
     });
 
-    socket.on('raise_hand', (data) => {
-      const { sessionId, isRaised } = data;
+    // Enhanced hand raising with state persistence
+    socket.on('sanctuary_raise_hand', async (data) => {
+      const { sessionId, raised } = data;
       
-      socket.to(`audio_room_${sessionId}`).emit('hand_raised', {
-        participantId: socket.userId,
-        participantAlias: socket.userAlias || 'Anonymous',
-        isRaised,
-        timestamp: new Date().toISOString()
-      });
+      try {
+        await stateManager.updateParticipantStatus(sessionId, socket.userId, 'connected', {
+          handRaised: raised,
+          handRaisedAt: raised ? new Date().toISOString() : null
+        });
+
+        socket.to(`sanctuary_${sessionId}`).emit('hand_raised', {
+          participantId: socket.userId,
+          participantAlias: socket.userAlias || 'Anonymous',
+          isRaised: raised,
+          timestamp: new Date().toISOString()
+        });
+        
+        console.log(`Hand ${raised ? 'raised' : 'lowered'} by ${socket.userId} in ${sessionId}`);
+      } catch (error) {
+        console.error('❌ Error updating hand raise status:', error);
+      }
     });
 
     socket.on('promote_to_speaker', (data) => {
@@ -393,18 +472,38 @@ const initializeSocket = (server) => {
       });
     });
 
-    socket.on('emergency_alert', (data) => {
-      const { sessionId, alertType, message } = data;
+    // Enhanced emergency alert system
+    socket.on('sanctuary_emergency_alert', async (data) => {
+      const { sessionId, type, message } = data;
       
-      // Send to all participants and moderators
-      io.to(`audio_room_${sessionId}`).emit('emergency_alert', {
-        alertType,
-        message,
-        fromParticipant: socket.userId,
-        timestamp: new Date().toISOString()
-      });
-      
-      console.log(`Emergency alert in ${sessionId}: ${alertType} - ${message}`);
+      try {
+        const alert = await stateManager.setEmergencyAlert(sessionId, {
+          type,
+          message,
+          reportedBy: socket.userId,
+          reporterAlias: socket.userAlias || 'Anonymous',
+          severity: type === 'crisis' ? 'critical' : 'high'
+        });
+
+        // Send to all participants and moderators
+        io.to(`sanctuary_${sessionId}`).emit('emergency_alert', {
+          id: alert.id,
+          type: alert.type,
+          message: alert.message,
+          severity: alert.severity,
+          timestamp: alert.timestamp,
+          reporterAlias: alert.reporterAlias
+        });
+        
+        // Log critical alerts
+        if (type === 'crisis') {
+          console.error(`🚨 CRITICAL EMERGENCY ALERT in ${sessionId}: ${message}`);
+        } else {
+          console.warn(`⚠️ Emergency alert in ${sessionId}: ${message}`);
+        }
+      } catch (error) {
+        console.error('❌ Error handling emergency alert:', error);
+      }
     });
 
     // Handle voice chat requests

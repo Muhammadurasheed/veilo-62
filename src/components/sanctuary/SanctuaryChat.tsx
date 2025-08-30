@@ -83,10 +83,10 @@ export const SanctuaryChat: React.FC<SanctuaryChatProps> = ({
 
   const fetchMessages = async () => {
     try {
-      const token = localStorage.getItem('veilo-auth-token');
+      const token = localStorage.getItem('auth_token');
       const response = await fetch(`/api/sanctuary-chat/sessions/${sessionId}/messages`, {
         headers: {
-          'x-auth-token': token || '',
+          'Authorization': `Bearer ${token}`,
         }
       });
 
@@ -156,12 +156,12 @@ export const SanctuaryChat: React.FC<SanctuaryChatProps> = ({
 
     setSending(true);
     try {
-      const token = localStorage.getItem('veilo-auth-token');
+      const token = localStorage.getItem('auth_token');
       const response = await fetch(`/api/sanctuary-chat/sessions/${sessionId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-auth-token': token || '',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           content: newMessage.trim(),
@@ -191,12 +191,12 @@ export const SanctuaryChat: React.FC<SanctuaryChatProps> = ({
 
   const sendQuickReaction = async (emoji: string) => {
     try {
-      const token = localStorage.getItem('veilo-auth-token');
+      const token = localStorage.getItem('auth_token');
       await fetch(`/api/sanctuary-chat/sessions/${sessionId}/messages`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-auth-token': token || '',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({
           content: emoji,
@@ -210,12 +210,12 @@ export const SanctuaryChat: React.FC<SanctuaryChatProps> = ({
 
   const addReaction = async (messageId: string, emoji: string) => {
     try {
-      const token = localStorage.getItem('veilo-auth-token');
+      const token = localStorage.getItem('auth_token');
       await fetch(`/api/sanctuary-chat/messages/${messageId}/reactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'x-auth-token': token || '',
+          'Authorization': `Bearer ${token}`,
         },
         body: JSON.stringify({ emoji })
       });
