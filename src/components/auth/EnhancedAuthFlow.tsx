@@ -97,8 +97,7 @@ export const EnhancedAuthFlow: React.FC<EnhancedAuthFlowProps> = ({
         success = await register({
           email: formData.email,
           password: formData.password,
-          realName: formData.realName,
-          preferredAlias: formData.preferredAlias
+          alias: formData.preferredAlias
         });
       }
 

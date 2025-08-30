@@ -80,7 +80,7 @@ const MySanctuaries = () => {
         try {
           if (isAnonKey) {
             // Validate anonymous inbox sanctuary
-            const response = await SanctuaryApi.getSubmissions(sanctuaryId, hostToken);
+            const response = await SanctuaryApi.getSession(sanctuaryId);
             if (response.success && response.data) {
               storedSanctuaries.push({
                 id: sanctuaryId,

@@ -448,29 +448,33 @@ const AdminApi = {
     return apiRequest('GET', '/api/admin/monitoring/expert-applications');
   },
 
-  // Additional admin methods for complete coverage
-  getAllExperts: async () => apiRequest('GET', '/api/admin/experts/all'),
-
-  // Content Moderation
-  async getFlaggedContent(params?: any) {
-    return apiRequest('GET', '/api/admin/content/flagged', null, { params });
+  // Flagged content management
+  async getFlaggedContent() {
+    return apiRequest('GET', '/api/admin/content/flagged');
   },
 
-  async resolveFlag(contentId: string, action: 'approve' | 'remove', notes?: string) {
-    return apiRequest('POST', `/api/admin/content/${contentId}/resolve`, { action, notes });
+  async resolveFlag(contentId: string, action: string) {
+    return apiRequest('POST', `/api/admin/content/${contentId}/resolve-flag`, { action });
   },
 
-  // Additional methods for comprehensive admin functionality
+  // Get all experts
+  async getAllExperts() {
+    return apiRequest('GET', '/api/admin/experts/all');
+  },
+
+  // Global metrics
   async getGlobalMetrics() {
-    return apiRequest('GET', '/api/admin/analytics/global-metrics');
+    return apiRequest('GET', '/api/admin/metrics/global');
   },
 
-  async getRecentActivity(params?: any) {
-    return apiRequest('GET', '/api/admin/analytics/recent-activity', null, { params });
+  // Recent activity
+  async getRecentActivity() {
+    return apiRequest('GET', '/api/admin/activity/recent');
   },
 
+  // Update expert status
   async updateExpertStatus(expertId: string, status: string) {
-    return apiRequest('PATCH', `/api/admin/experts/${expertId}/status`, { status });
+    return apiRequest('PUT', `/api/admin/experts/${expertId}/status`, { status });
   }
 } satisfies AdminApiType;
 
