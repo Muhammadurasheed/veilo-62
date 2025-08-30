@@ -36,6 +36,9 @@ import EnhancedSanctuary from '@/pages/EnhancedSanctuary';
 import EnhancedLiveSanctuary from '@/pages/EnhancedLiveSanctuary';
 import Phase4Test from '@/pages/Phase4Test';
 import FollowedExperts from '@/pages/FollowedExperts';
+import { ScheduledSanctuaryCreator } from '@/components/sanctuary/ScheduledSanctuaryCreator';
+import { ScheduledSanctuaryInvite } from '@/components/sanctuary/ScheduledSanctuaryInvite';
+import { EnhancedLiveAudioSpace } from '@/components/sanctuary/EnhancedLiveAudioSpace';
 import { SessionProvider } from '@/contexts/SessionContext';
 import { ProtectedRoute } from '@/components/routing/ProtectedRoute';
 
@@ -92,6 +95,17 @@ const App: React.FC = () => {
                   </ProtectedRoute>
                 } />
                 <Route path="/sanctuary/join/:inviteCode" element={<SanctuaryJoinViaInvite />} />
+                <Route path="/sanctuary/scheduled/create" element={
+                  <ProtectedRoute requireAuth={true}>
+                    <ScheduledSanctuaryCreator />
+                  </ProtectedRoute>
+                } />
+                <Route path="/sanctuary/scheduled/invite/:inviteCode" element={<ScheduledSanctuaryInvite />} />
+                <Route path="/sanctuary/enhanced/live/:sessionId" element={
+                  <ProtectedRoute requireAuth={true}>
+                    <EnhancedLiveAudioSpace />
+                  </ProtectedRoute>
+                } />
                         <Route path="/feed" element={<Feed />} />
                         <Route path="/beacons" element={<BeaconsList />} />
                         <Route path="/beacons/:expertId" element={

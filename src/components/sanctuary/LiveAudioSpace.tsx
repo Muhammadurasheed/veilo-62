@@ -7,6 +7,8 @@ import { Separator } from '@/components/ui/separator';
 import { useToast } from '@/hooks/use-toast';
 import { useSanctuarySocket } from '@/hooks/useSanctuarySocket';
 import { LiveAudioApi } from '@/services/liveAudioApi';
+import { VoiceModulationPanel } from './VoiceModulationPanel';
+import { SanctuaryChat } from './SanctuaryChat';
 import { 
   Mic, 
   MicOff, 
@@ -17,7 +19,9 @@ import {
   PhoneOff,
   Settings,
   AlertTriangle,
-  Shield
+  Shield,
+  MessageSquare,
+  Zap
 } from 'lucide-react';
 import type { LiveSanctuarySession, LiveParticipant } from '@/types/sanctuary';
 
@@ -39,6 +43,9 @@ export const LiveAudioSpace = ({ session, currentUser, onLeave }: LiveAudioSpace
   const [handRaised, setHandRaised] = useState(false);
   const [participants, setParticipants] = useState<LiveParticipant[]>(session.participants || []);
   const [audioLevel, setAudioLevel] = useState(0);
+  const [showVoiceSettings, setShowVoiceSettings] = useState(false);
+  const [showChat, setShowChat] = useState(true);
+  const [voiceModulationEnabled, setVoiceModulationEnabled] = useState(false);
   
   // Socket connection for real-time events
   const {
@@ -272,9 +279,11 @@ export const LiveAudioSpace = ({ session, currentUser, onLeave }: LiveAudioSpace
   };
 
   return (
-    <div className="space-y-6">
-      {/* Audio Controls */}
-      <Card>
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Main Audio Controls */}
+      <div className="lg:col-span-2 space-y-6">
+        {/* Audio Controls */}
+        <Card>
         <CardContent className="pt-6">
           <div className="flex justify-center space-x-4 mb-6">
             <Button
@@ -318,6 +327,15 @@ export const LiveAudioSpace = ({ session, currentUser, onLeave }: LiveAudioSpace
 
             <Button
               size="lg"
+              variant={showVoiceSettings ? "default" : "outline"}
+              onClick={() => setShowVoiceSettings(!showVoiceSettings)}
+            >
+              <Zap className="h-5 w-5 mr-2" />
+              Voice
+            </Button>
+
+            <Button
+              size="lg"
               variant="destructive"
               onClick={onLeave}
             >
@@ -341,6 +359,15 @@ export const LiveAudioSpace = ({ session, currentUser, onLeave }: LiveAudioSpace
           )}
         </CardContent>
       </Card>
+
+        {/* Voice Modulation Panel */}
+        {showVoiceSettings && (
+          <VoiceModulationPanel
+            sessionId={session.id}
+            isEnabled={voiceModulationEnabled}
+            onToggle={setVoiceModulationEnabled}
+          />
+        )}
 
       {/* Participants List */}
       <Card>
@@ -480,6 +507,36 @@ export const LiveAudioSpace = ({ session, currentUser, onLeave }: LiveAudioSpace
           </p>
         </CardContent>
       </Card>
+      </div>
+
+      {/* Right Sidebar - Chat */}
+      <div className="lg:col-span-1">
+        <div className="sticky top-6">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-lg font-semibold">Live Chat</h3>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowChat(!showChat)}
+            >
+              <MessageSquare className="h-4 w-4" />
+            </Button>
+          </div>
+          
+          {showChat && (
+            <SanctuaryChat
+              sessionId={session.id}
+              socket={{
+                onEvent: onEvent,
+                emit: (event: string, data: any) => {
+                  // Socket integration handled by context
+                }
+              }}
+              className="h-96"
+            />
+          )}
+        </div>
+      </div>
     </div>
   );
 };
