@@ -1,154 +1,113 @@
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const mongoose = require('mongoose');
+const http = require('http');
+const socketIo = require('socket.io');
 const path = require('path');
-const dotenv = require('dotenv');
-const { initializeSocket } = require('./socket/socketHandler'); // Import socket initialization
-const { createServer } = require('http'); // Import http server
-const { instrument } = require('@socket.io/admin-ui');
 
-dotenv.config();
-
-const responseHandler = require('./middleware/responseHandler');
+// Import configurations and middleware
+const { connectDB } = require('./config/database');
+const { responseHandler } = require('./middleware/responseHandler');
+const { performanceMonitor } = require('./middleware/performanceMonitor');
+const socketHandler = require('./socket/socketHandler');
 
 const app = express();
-const port = process.env.PORT || 3000;
+const server = http.createServer(app);
 
-// CORS Configuration
-const allowedOrigins = [
-  process.env.FRONTEND_URL,
-  process.env.FRONTEND_URL_2,
-  process.env.CLIENT_URL,
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:8080',
-  'http://127.0.0.1:8080'
-].filter(Boolean);
-
+// Configure CORS properly
 const corsOptions = {
-  origin: (origin, callback) => {
-    if (!origin || allowedOrigins.length === 0 || allowedOrigins.includes(origin)) {
+  origin: function (origin, callback) {
+    // Allow requests with no origin (mobile apps, curl, etc.)
+    if (!origin) return callback(null, true);
+    
+    const allowedOrigins = [
+      'http://localhost:8080',
+      'http://localhost:3000', 
+      'http://127.0.0.1:8080',
+      'http://127.0.0.1:3000',
+      'https://localhost:8080',
+      'https://localhost:3000'
+    ];
+    
+    if (allowedOrigins.includes(origin)) {
       callback(null, true);
     } else {
-      callback(new Error('Not allowed by CORS'));
+      console.log('CORS blocked origin:', origin);
+      callback(null, true); // Allow all origins for now during development
     }
   },
   credentials: true,
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  optionsSuccessStatus: 204,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-requested-with']
 };
 
 app.use(cors(corsOptions));
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
-// Attach standardized response helpers (res.success, res.error, res.paginated)
+
+// Middleware setup
+app.use(express.json({ limit: '2mb' }));
+app.use(express.urlencoded({ extended: true }));
+app.use(helmet());
+
+// Rate limiting
+const limiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // limit each IP to 100 requests per windowMs
+  message: 'Too many requests from this IP, please try again after 15 minutes'
+});
+app.use(limiter);
+
+// Custom middleware
 app.use(responseHandler);
-
-// ✅ Fixed MongoDB Connection (use correct env variable)
-const dbUrl = process.env.MONGODB_URI;
-
-if (!dbUrl) {
-  console.error("❌ MONGODB_URI is not defined in .env");
-  process.exit(1); // stop app if env var missing
-}
-
-mongoose.connect(dbUrl, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-})
-.then(async () => {
-  console.log('✅ MongoDB connected');
-  
-  // Auto-setup platform data on first run
-  try {
-    const setupPlatformData = require('./scripts/setupPlatformData');
-    await setupPlatformData();
-  } catch (error) {
-    console.log('ℹ️ Platform data setup skipped:', error.message);
-  }
-})
-.catch(err => console.error('❌ MongoDB connection error:', err));
+app.use(performanceMonitor);
 
 // Serve static files from the 'uploads' directory
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
-// Import route files
-const authRoutes = require('./routes/authRoutes');
-const expertRoutes = require('./routes/expertRoutes');
-const userRoutes = require('./routes/userRoutes');
-const bookingRoutes = require('./routes/bookingRoutes');
-const adminRoutes = require('./routes/adminRoutes');
-const enhancedAdminRoutes = require('./routes/enhancedAdminRoutes');
-const adminDashboardRoutes = require('./routes/adminDashboardRoutes');
-const postRoutes = require('./routes/postRoutes');
-const aiRoutes = require('./routes/aiRoutes');
-const sanctuaryRoutes = require('./routes/sanctuaryRoutes');
-const liveSanctuaryRoutes = require('./routes/liveSanctuaryRoutes');
-const sanctuaryInvitationRoutes = require('./routes/sanctuaryInvitationRoutes');
-const sanctuaryChatRoutes = require('./routes/sanctuaryChatRoutes');
-const voiceModulationRoutes = require('./routes/voiceModulationRoutes');
-const scheduledSanctuaryRoutes = require('./routes/scheduledSanctuaryRoutes');
-const { router: sanctuaryStateRoutes } = require('./services/sanctuaryStateManager');
-const chatRoutes = require('./routes/chatRoutes');
-const sessionRatingRoutes = require('./routes/sessionRatingRoutes');
-const hostRecoveryRoutes = require('./routes/hostRecoveryRoutes');
-const agoraRoutes = require('./routes/agoraRoutes');
+// API routes
+app.use('/api/auth', require('./routes/authRoutes'));
+app.use('/api/posts', require('./routes/postRoutes'));
+app.use('/api/comments', require('./routes/commentRoutes'));
+app.use('/api/experts', require('./routes/expertRoutes'));
+app.use('/api/sessions', require('./routes/sessionRoutes'));
+app.use('/api/users', require('./routes/userRoutes'));
+app.use('/api/scheduled-sanctuary', require('./routes/scheduledSanctuaryRoutes'));
+app.use('/api/live-sanctuary', require('./routes/liveSanctuaryRoutes'));
+app.use('/api/admin', require('./routes/adminRoutes'));
+app.use('/api/elevenlabs', require('./routes/elevenLabsRoutes'));
 
-// API Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/experts', expertRoutes);
-app.use('/api/users', userRoutes);
-app.use('/api/admin', adminRoutes);
-app.use('/api/admin', enhancedAdminRoutes);
-app.use('/api/admin/monitoring', adminDashboardRoutes);
-app.use('/api/posts', postRoutes);
-app.use('/api/ai', aiRoutes);
-app.use('/api/sanctuary', sanctuaryRoutes);
-
-// Live Sanctuary routes with debugging
-app.use('/api/live-sanctuary', (req, res, next) => {
-  console.log('🔍 Live Sanctuary API Debug:', {
-    method: req.method,
-    path: req.path,
-    url: req.url,
-    body: req.method === 'POST' ? req.body : 'N/A'
-  });
-  next();
+// Socket.io setup with CORS
+const io = socketIo(server, {
+  cors: {
+    origin: corsOptions.origin,
+    methods: ["GET", "POST"],
+    credentials: true
+  }
 });
-app.use('/api/live-sanctuary', liveSanctuaryRoutes);
-app.use('/api/sanctuary-invitations', sanctuaryInvitationRoutes);
-app.use('/api/sanctuary-chat', sanctuaryChatRoutes);
-app.use('/api/voice-modulation', voiceModulationRoutes);
-app.use('/api/scheduled-sanctuary', scheduledSanctuaryRoutes);
-app.use('/api/sanctuary-state', sanctuaryStateRoutes);
-app.use('/api/bookings', bookingRoutes);
-app.use('/api/chat', chatRoutes);
-app.use('/api/sessions', sessionRatingRoutes);
-app.use('/api/host-recovery', hostRecoveryRoutes);
-app.use('/api/agora', agoraRoutes);
 
-// Error handling middleware
+// Socket.io handler
+socketHandler(io);
+
+// Connect to MongoDB
+connectDB();
+
+// Central error handling
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).send('Something broke!');
+  console.error('Global error handler:', err);
+  res.status(500).json({
+    success: false,
+    message: 'Internal Server Error',
+    error: err.message || 'An unexpected error occurred',
+    data: null
+  });
 });
 
-// HTTP Server Setup
-const server = createServer(app);
-
-// Socket.IO Initialization
-const io = initializeSocket(server);
-
-// Make io available to routes for real-time features
-app.set('io', io);
-
-// Socket.IO Admin Panel Instrumentation
-instrument(io, {
-  auth: false, // Disable authentication for local development
-  namespaceName: "/admin",
+// Start server
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+  console.log(`Server running on port ${PORT}`);
 });
 
-// Start the server
-server.listen(port, () => {
-  console.log(`🚀 Server running on port ${port}`);
-});
+// Expose app and io for testing or other modules
+module.exports = { app, io };

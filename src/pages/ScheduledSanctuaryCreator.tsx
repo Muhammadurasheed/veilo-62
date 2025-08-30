@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useForm } from 'react-hook-form';
@@ -17,7 +18,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { format, addDays, setHours, setMinutes } from 'date-fns';
-import { CalendarIcon, Clock, ChevronLeft, Calendar as CalendarLucide, Users, Shield, AlertTriangle, Share2, Copy, Check } from 'lucide-react';
+import { CalendarIcon, Clock, ChevronLeft, Calendar as CalendarLucide, Users, Shield, AlertTriangle, Copy, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { SEOHead } from '@/components/seo/SEOHead';
 
@@ -73,7 +74,6 @@ export const ScheduledSanctuaryCreator: React.FC = () => {
       
       console.log('📅 Creating scheduled sanctuary:', data);
       
-      // Mock API call - replace with actual implementation
       const response = await fetch('/api/scheduled-sanctuary', {
         method: 'POST',
         headers: {
@@ -99,10 +99,9 @@ export const ScheduledSanctuaryCreator: React.FC = () => {
       const result = await response.json();
 
       if (result.success && result.data) {
-        const session = result.data.session || result.data;
+        const sanctuary = result.data.sanctuary || result.data;
         
-        // Generate invite link
-        const link = `${window.location.origin}/sanctuary/join/${session.invitationCode}`;
+        const link = `${window.location.origin}/sanctuary/join/${sanctuary.invitationCode}`;
         setInviteLink(link);
         
         toast({
@@ -136,20 +135,15 @@ export const ScheduledSanctuaryCreator: React.FC = () => {
     }
   };
 
-  const setTimeQuickly = (hours: number, minutes: number = 0) => {
-    const newDate = setMinutes(setHours(watchedValues.scheduledDateTime, hours), minutes);
-    setValue('scheduledDateTime', newDate);
-  };
-
   if (inviteLink) {
     return (
       <Layout>
-        <div className="min-h-screen bg-gradient-to-br from-background via-blue-500/5 to-purple-500/5">
+        <div className="min-h-screen bg-background">
           <div className="container mx-auto px-4 py-16">
             <div className="max-w-2xl mx-auto text-center">
               <div className="mb-8">
-                <div className="bg-gradient-to-br from-blue-500 to-purple-500 p-6 rounded-full w-24 h-24 mx-auto mb-6 flex items-center justify-center">
-                  <CalendarLucide className="h-12 w-12 text-white" />
+                <div className="bg-gradient-to-br from-primary to-primary/80 p-6 rounded-full w-24 h-24 mx-auto mb-6 flex items-center justify-center">
+                  <CalendarLucide className="h-12 w-12 text-primary-foreground" />
                 </div>
                 <h1 className="text-4xl font-bold mb-4">Sanctuary Scheduled!</h1>
                 <p className="text-xl text-muted-foreground">Your session is ready. Share the invitation link below.</p>
@@ -195,7 +189,7 @@ export const ScheduledSanctuaryCreator: React.FC = () => {
                       View My Sanctuaries
                     </Button>
                     <Button 
-                      className="flex-1 bg-gradient-to-r from-blue-500 to-purple-500"
+                      className="flex-1"
                       onClick={() => window.location.reload()}
                     >
                       Schedule Another
@@ -203,11 +197,6 @@ export const ScheduledSanctuaryCreator: React.FC = () => {
                   </div>
                 </CardContent>
               </Card>
-
-              <div className="text-sm text-muted-foreground">
-                <p>Participants will see a "Do you want to join this session?" screen when they click the link.</p>
-                <p>Early access will be available {watchedValues.earlyJoinMinutes} minutes before the start time.</p>
-              </div>
             </div>
           </div>
         </div>
@@ -223,9 +212,8 @@ export const ScheduledSanctuaryCreator: React.FC = () => {
         keywords="schedule sanctuary, planned audio session, anonymous support"
       />
 
-      <div className="min-h-screen bg-gradient-to-br from-background via-blue-500/5 to-purple-500/5">
+      <div className="min-h-screen bg-background">
         <div className="container mx-auto px-4 py-8">
-          {/* Header */}
           <div className="flex items-center gap-4 mb-8">
             <Button 
               variant="ghost" 
@@ -237,8 +225,8 @@ export const ScheduledSanctuaryCreator: React.FC = () => {
             </Button>
             
             <div className="flex items-center gap-3">
-              <div className="bg-gradient-to-br from-blue-500 to-purple-500 p-3 rounded-full">
-                <CalendarLucide className="h-6 w-6 text-white" />
+              <div className="bg-primary p-3 rounded-full">
+                <CalendarLucide className="h-6 w-6 text-primary-foreground" />
               </div>
               <div>
                 <h1 className="text-2xl font-bold">Schedule Sanctuary</h1>
@@ -247,342 +235,162 @@ export const ScheduledSanctuaryCreator: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-            {/* Main Form */}
-            <div className="lg:col-span-2">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <CalendarLucide className="h-5 w-5 text-blue-500" />
-                    Sanctuary Details
-                  </CardTitle>
-                </CardHeader>
-                
-                <CardContent>
-                  <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
-                    {/* Topic */}
-                    <div className="space-y-2">
-                      <Label htmlFor="topic">Topic *</Label>
-                      <Input
-                        id="topic"
-                        placeholder="What's your sanctuary about? (e.g., Breaking addiction habits)"
-                        {...register('topic')}
-                        className={errors.topic ? 'border-destructive' : ''}
-                      />
-                      {errors.topic && (
-                        <p className="text-sm text-destructive">{errors.topic.message}</p>
-                      )}
-                    </div>
-
-                    {/* Description */}
-                    <div className="space-y-2">
-                      <Label htmlFor="description">Description (Optional)</Label>
-                      <Textarea
-                        id="description"
-                        placeholder="Provide more context about your sanctuary session..."
-                        {...register('description')}
-                        className="min-h-[80px]"
-                      />
-                    </div>
-
-                    {/* Emoji Selection */}
-                    <div className="space-y-3">
-                      <Label>Choose Emoji</Label>
-                      <div className="grid grid-cols-8 gap-2">
-                        {emojiOptions.map((emoji) => (
-                          <Button
-                            key={emoji}
-                            type="button"
-                            variant={watchedValues.emoji === emoji ? 'default' : 'outline'}
-                            size="sm"
-                            className="aspect-square p-0"
-                            onClick={() => setValue('emoji', emoji)}
-                          >
-                            <span className="text-lg">{emoji}</span>
-                          </Button>
-                        ))}
-                      </div>
-                    </div>
-
-                    {/* Date & Time Scheduling */}
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                      <div className="space-y-2">
-                        <Label>Date</Label>
-                        <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="outline"
-                              className={cn(
-                                "w-full justify-start text-left font-normal",
-                                !watchedValues.scheduledDateTime && "text-muted-foreground"
-                              )}
-                            >
-                              <CalendarIcon className="mr-2 h-4 w-4" />
-                              {watchedValues.scheduledDateTime ? (
-                                format(watchedValues.scheduledDateTime, 'MMMM d, yyyy')
-                              ) : (
-                                <span>Pick a date</span>
-                              )}
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent className="w-auto p-0" align="start">
-                            <Calendar
-                              mode="single"
-                              selected={watchedValues.scheduledDateTime}
-                              onSelect={(date) => {
-                                if (date) {
-                                  setValue('scheduledDateTime', date);
-                                  setCalendarOpen(false);
-                                }
-                              }}
-                              disabled={(date) => date < new Date()}
-                              initialFocus
-                            />
-                          </PopoverContent>
-                        </Popover>
-                      </div>
-
-                      <div className="space-y-2">
-                        <Label>Time</Label>
-                        <div className="grid grid-cols-2 gap-2">
-                          <Select
-                            value={watchedValues.scheduledDateTime.getHours().toString()}
-                            onValueChange={(value) => setTimeQuickly(parseInt(value), watchedValues.scheduledDateTime.getMinutes())}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {Array.from({ length: 24 }, (_, i) => (
-                                <SelectItem key={i} value={i.toString()}>
-                                  {i.toString().padStart(2, '0')}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                          
-                          <Select
-                            value={watchedValues.scheduledDateTime.getMinutes().toString()}
-                            onValueChange={(value) => setTimeQuickly(watchedValues.scheduledDateTime.getHours(), parseInt(value))}
-                          >
-                            <SelectTrigger>
-                              <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent>
-                              {[0, 15, 30, 45].map((minute) => (
-                                <SelectItem key={minute} value={minute.toString()}>
-                                  {minute.toString().padStart(2, '0')}
-                                </SelectItem>
-                              ))}
-                            </SelectContent>
-                          </Select>
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* Duration */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label>Estimated Duration</Label>
-                        <Badge variant="outline">{watchedValues.estimatedDuration} minutes</Badge>
-                      </div>
-                      <Slider
-                        value={[watchedValues.estimatedDuration]}
-                        onValueChange={(value) => setValue('estimatedDuration', value[0])}
-                        min={15}
-                        max={480}
-                        step={15}
-                        className="w-full"
-                      />
-                      <div className="flex justify-between text-xs text-muted-foreground">
-                        <span>15 min</span>
-                        <span>8 hours</span>
-                      </div>
-                    </div>
-
-                    {/* Max Participants */}
-                    <div className="space-y-3">
-                      <div className="flex items-center justify-between">
-                        <Label>Max Participants</Label>
-                        <Badge variant="outline">{watchedValues.maxParticipants} people</Badge>
-                      </div>
-                      <Slider
-                        value={[watchedValues.maxParticipants]}
-                        onValueChange={(value) => setValue('maxParticipants', value[0])}
-                        min={2}
-                        max={200}
-                        step={1}
-                        className="w-full"
-                      />
-                    </div>
-
-                    {/* Early Join Settings */}
-                    <div className="space-y-4">
-                      <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Clock className="h-4 w-4 text-blue-500" />
-                            <span className="font-medium">Allow Early Join</span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">Let participants join before start time</p>
-                        </div>
-                        <Switch
-                          checked={watchedValues.allowEarlyJoin}
-                          onCheckedChange={(checked) => setValue('allowEarlyJoin', checked)}
-                        />
-                      </div>
-
-                      {watchedValues.allowEarlyJoin && (
-                        <div className="space-y-3 ml-4">
-                          <div className="flex items-center justify-between">
-                            <Label>Early Join Window</Label>
-                            <Badge variant="outline">{watchedValues.earlyJoinMinutes} minutes before</Badge>
-                          </div>
-                          <Slider
-                            value={[watchedValues.earlyJoinMinutes]}
-                            onValueChange={(value) => setValue('earlyJoinMinutes', value[0])}
-                            min={5}
-                            max={60}
-                            step={5}
-                            className="w-full"
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Safety Settings */}
-                    <div className="space-y-4">
-                      <Label className="text-base font-semibold">Safety Settings</Label>
-                      
-                      <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <Shield className="h-4 w-4 text-green-500" />
-                            <span className="font-medium">AI Moderation</span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">Filter harmful content automatically</p>
-                        </div>
-                        <Switch
-                          checked={watchedValues.moderationEnabled}
-                          onCheckedChange={(checked) => setValue('moderationEnabled', checked)}
-                        />
-                      </div>
-
-                      <div className="flex items-center justify-between p-4 border rounded-lg">
-                        <div className="space-y-1">
-                          <div className="flex items-center gap-2">
-                            <AlertTriangle className="h-4 w-4 text-yellow-500" />
-                            <span className="font-medium">Emergency Protocols</span>
-                          </div>
-                          <p className="text-sm text-muted-foreground">Enable crisis detection and response</p>
-                        </div>
-                        <Switch
-                          checked={watchedValues.emergencyContactEnabled}
-                          onCheckedChange={(checked) => setValue('emergencyContactEnabled', checked)}
-                        />
-                      </div>
-                    </div>
-
-                    <Button 
-                      type="submit" 
-                      className="w-full bg-gradient-to-r from-blue-500 to-purple-500 hover:from-blue-600 hover:to-purple-600"
-                      size="lg"
-                      disabled={isCreating}
-                    >
-                      {isCreating ? (
-                        <div className="flex items-center gap-2">
-                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                          Scheduling Sanctuary...
-                        </div>
-                      ) : (
-                        <>
-                          <CalendarLucide className="h-4 w-4 mr-2" />
-                          Schedule Sanctuary
-                        </>
-                      )}
-                    </Button>
-                  </form>
-                </CardContent>
-              </Card>
-            </div>
-
-            {/* Preview Sidebar */}
-            <div className="space-y-6">
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">Session Preview</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex items-center gap-3">
-                    <span className="text-2xl">{watchedValues.emoji}</span>
-                    <div>
-                      <h3 className="font-semibold">{watchedValues.topic || 'Your Topic Here'}</h3>
-                      <p className="text-sm text-muted-foreground">Scheduled Session</p>
-                    </div>
-                  </div>
-                  
+          <div className="max-w-4xl mx-auto">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <CalendarLucide className="h-5 w-5 text-primary" />
+                  Sanctuary Details
+                </CardTitle>
+              </CardHeader>
+              
+              <CardContent>
+                <form onSubmit={handleSubmit(onSubmit)} className="space-y-6">
+                  {/* Topic */}
                   <div className="space-y-2">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Date & Time</span>
-                      <Badge variant="secondary">
-                        {format(watchedValues.scheduledDateTime, 'MMM d, h:mm a')}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Duration</span>
-                      <Badge variant="secondary">{watchedValues.estimatedDuration}m</Badge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Max Participants</span>
-                      <Badge variant="secondary">{watchedValues.maxParticipants}</Badge>
-                    </div>
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">Early Join</span>
-                      <Badge variant={watchedValues.allowEarlyJoin ? 'default' : 'secondary'}>
-                        {watchedValues.allowEarlyJoin ? `${watchedValues.earlyJoinMinutes}m` : 'Off'}
-                      </Badge>
-                    </div>
+                    <Label htmlFor="topic">Topic *</Label>
+                    <Input
+                      id="topic"
+                      placeholder="What's your sanctuary about?"
+                      {...register('topic')}
+                      className={errors.topic ? 'border-destructive' : ''}
+                    />
+                    {errors.topic && (
+                      <p className="text-sm text-destructive">{errors.topic.message}</p>
+                    )}
                   </div>
-                </CardContent>
-              </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle className="text-lg">What Happens Next?</CardTitle>
-                </CardHeader>
-                <CardContent className="space-y-3">
-                  <div className="flex items-start gap-3">
-                    <div className="bg-primary/10 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-primary">1</span>
+                  {/* Description */}
+                  <div className="space-y-2">
+                    <Label htmlFor="description">Description (Optional)</Label>
+                    <Textarea
+                      id="description"
+                      placeholder="Provide more context about your sanctuary session..."
+                      {...register('description')}
+                      className="min-h-[80px]"
+                    />
+                  </div>
+
+                  {/* Date & Time - Fixed Implementation */}
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label>Date</Label>
+                      <Popover open={calendarOpen} onOpenChange={setCalendarOpen}>
+                        <PopoverTrigger asChild>
+                          <Button
+                            variant="outline"
+                            className={cn(
+                              "w-full justify-start text-left font-normal",
+                              !watchedValues.scheduledDateTime && "text-muted-foreground"
+                            )}
+                          >
+                            <CalendarIcon className="mr-2 h-4 w-4" />
+                            {watchedValues.scheduledDateTime ? (
+                              format(watchedValues.scheduledDateTime, 'MMMM d, yyyy')
+                            ) : (
+                              <span>Pick a date</span>
+                            )}
+                          </Button>
+                        </PopoverTrigger>
+                        <PopoverContent className="w-auto p-0" align="start">
+                          <Calendar
+                            mode="single"
+                            selected={watchedValues.scheduledDateTime}
+                            onSelect={(date) => {
+                              if (date) {
+                                setValue('scheduledDateTime', date);
+                                setCalendarOpen(false);
+                              }
+                            }}
+                            disabled={(date) => date < new Date()}
+                            initialFocus
+                            className="p-3 pointer-events-auto"
+                          />
+                        </PopoverContent>
+                      </Popover>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">Invitation Created</p>
-                      <p className="text-xs text-muted-foreground">Get a shareable link for participants</p>
+
+                    <div className="space-y-2">
+                      <Label>Time</Label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <Select
+                          value={watchedValues.scheduledDateTime.getHours().toString()}
+                          onValueChange={(value) => {
+                            const newDate = setHours(watchedValues.scheduledDateTime, parseInt(value));
+                            setValue('scheduledDateTime', newDate);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {Array.from({ length: 24 }, (_, i) => (
+                              <SelectItem key={i} value={i.toString()}>
+                                {i.toString().padStart(2, '0')}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        
+                        <Select
+                          value={watchedValues.scheduledDateTime.getMinutes().toString()}
+                          onValueChange={(value) => {
+                            const newDate = setMinutes(watchedValues.scheduledDateTime, parseInt(value));
+                            setValue('scheduledDateTime', newDate);
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {[0, 15, 30, 45].map((minute) => (
+                              <SelectItem key={minute} value={minute.toString()}>
+                                {minute.toString().padStart(2, '0')}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
                   </div>
-                  
-                  <div className="flex items-start gap-3">
-                    <div className="bg-primary/10 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-primary">2</span>
+
+                  {/* Duration */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <Label>Estimated Duration</Label>
+                      <Badge variant="outline">{watchedValues.estimatedDuration} minutes</Badge>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium">Countdown Begins</p>
-                      <p className="text-xs text-muted-foreground">Participants see waiting screen before start</p>
-                    </div>
+                    <Slider
+                      value={[watchedValues.estimatedDuration]}
+                      onValueChange={(value) => setValue('estimatedDuration', value[0])}
+                      min={15}
+                      max={480}
+                      step={15}
+                      className="w-full"
+                    />
                   </div>
-                  
-                  <div className="flex items-start gap-3">
-                    <div className="bg-primary/10 w-6 h-6 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-xs font-bold text-primary">3</span>
-                    </div>
-                    <div>
-                      <p className="text-sm font-medium">Session Goes Live</p>
-                      <p className="text-xs text-muted-foreground">Automatic transition to live audio space</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+
+                  <Button 
+                    type="submit" 
+                    className="w-full"
+                    size="lg"
+                    disabled={isCreating}
+                  >
+                    {isCreating ? (
+                      <div className="flex items-center gap-2">
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                        Scheduling Sanctuary...
+                      </div>
+                    ) : (
+                      <>
+                        <CalendarLucide className="h-4 w-4 mr-2" />
+                        Schedule Sanctuary
+                      </>
+                    )}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
           </div>
         </div>
       </div>
