@@ -86,6 +86,8 @@ const sanctuaryRoutes = require('./routes/sanctuaryRoutes');
 const liveSanctuaryRoutes = require('./routes/liveSanctuaryRoutes');
 const sanctuaryInvitationRoutes = require('./routes/sanctuaryInvitationRoutes');
 const sanctuaryChatRoutes = require('./routes/sanctuaryChatRoutes');
+const voiceModulationRoutes = require('./routes/voiceModulationRoutes');
+const scheduledSanctuaryRoutes = require('./routes/scheduledSanctuaryRoutes');
 const chatRoutes = require('./routes/chatRoutes');
 const sessionRatingRoutes = require('./routes/sessionRatingRoutes');
 const hostRecoveryRoutes = require('./routes/hostRecoveryRoutes');
@@ -115,6 +117,8 @@ app.use('/api/live-sanctuary', (req, res, next) => {
 app.use('/api/live-sanctuary', liveSanctuaryRoutes);
 app.use('/api/sanctuary-invitations', sanctuaryInvitationRoutes);
 app.use('/api/sanctuary-chat', sanctuaryChatRoutes);
+app.use('/api/voice-modulation', voiceModulationRoutes);
+app.use('/api/scheduled-sanctuary', scheduledSanctuaryRoutes);
 app.use('/api/bookings', bookingRoutes);
 app.use('/api/chat', chatRoutes);
 app.use('/api/sessions', sessionRatingRoutes);
